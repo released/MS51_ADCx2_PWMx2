@@ -1,6 +1,19 @@
 # MS51_ADCx2_PWMx2
  MS51_ADCx2_PWMx2
 
+update @ 2020/04/16
+
+- modify ADC average alogrithm : normal average , get N sample delete X then average
+	
+	- normal average capture waveform as below (toggle GPIO P1.2)
+
+![image](https://github.com/released/MS51_ADCx2_PWMx2/blob/master/ADC_Average.jpg)
+	
+	- get N sample delete X then average capture waveform as below (toggle GPIO P1.2)
+
+![image](https://github.com/released/MS51_ADCx2_PWMx2/blob/master/ADC_GetNDelXAvg.jpg)
+
+
 update @ 2020/04/15
 
 update MS51 driver to Keil_V1.00.003 , by test in MS51 TSSOP20 EVM

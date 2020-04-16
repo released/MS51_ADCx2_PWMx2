@@ -56,6 +56,7 @@ enum{
 
 #define ADC_SAMPLE_COUNT 						(8ul)			// 8
 #define ADC_SAMPLE_POWER 						(3ul)			//(5)	 	// 3	,// 2 ^ ?
+#define ADC_SAMPLE_DELETE 						(4ul)
 #define ADC_SAMPLE_DROP 						(4ul)
 
 #define CUSTOM_INPUT_VOLT_MAX(VREF)			(VREF)			//(3300ul)
@@ -64,6 +65,8 @@ enum{
 #define ADC_DIGITAL_SCALE(void) 					(0xFFFU >> ((0) >> (3U - 1U)))		//0: 12 BIT 
 
 #define ENABLE_CONVERT_ADC_TO_DUTY_DEMO
+
+#define ENABLE_ADC_GET_N_DEL_X
 
 uint8_t 	u8TH0_Tmp = 0;
 uint8_t 	u8TL0_Tmp = 0;
@@ -97,22 +100,8 @@ uint8_t BitFlag = 0;
 #define BitFlag_READ(flag)							((BitFlag&flag)?1:0)
 #define ReadBit(bit)								(uint8_t)(1<<bit)
 
-uint8_t is_flag_set(Flag_Index idx)
-{
-	return BitFlag_READ(ReadBit(idx));
-}
-
-void set_flag(Flag_Index idx , uint8_t en)
-{
-	if (en)
-	{
-		BitFlag_ON(ReadBit(idx));
-	}
-	else
-	{
-		BitFlag_OFF(ReadBit(idx));
-	}
-}
+#define is_flag_set(idx)							(BitFlag_READ(ReadBit(idx)))
+#define set_flag(idx,en)							( (en == 1) ? (BitFlag_ON(ReadBit(idx))) : (BitFlag_OFF(ReadBit(idx))))
 
 void send_UARTString(uint8_t* Data)
 {
@@ -173,40 +162,17 @@ void send_UARTASCII(uint16_t Temp)
 
 void GPIO_Toggle_1(void)
 {
-    static uint8_t flag = 1;
-
-	if (flag)
-	{
-		P14 = 1;
-		flag = 0;
-	
-}
-	else
-	{
-		P14 = 0;
-		flag = 1;
-	}
+	P14 = ~P14;
 }
 
 void GPIO_Toggle_0(void)
 {
-    static uint8_t flag = 1;
-
-	if (flag)
-	{
-		P13 = 1;
-		flag = 0;
-	
-}
-	else
-	{
-		P13 = 0;
-		flag = 1;
-	}
+	P13 = ~P13;	
 }
 
-void GPIO_Init(void)
+void GPIO_Init(void)	//for test
 {
+    P12_PUSHPULL_MODE;	
     P13_PUSHPULL_MODE;
     P14_PUSHPULL_MODE;	
 }
@@ -332,7 +298,61 @@ uint16_t ADC_Drop(uint8_t drop)
 	return 0;
 }
 
-uint16_t ADC_Average (uint8_t avg)
+#if defined (ENABLE_ADC_GET_N_DEL_X)
+void Sort_tab(uint16_t tab[], uint8_t length)
+{
+	uint8_t l = 0x00, exchange = 0x01; 
+	uint16_t tmp = 0x00;
+
+	/* Sort tab */
+	while(exchange==1) 
+	{ 
+		exchange=0; 
+		for(l=0; l<length-1; l++) 
+		{
+			if( tab[l] > tab[l+1] ) 
+			{ 
+				tmp = tab[l]; 
+				tab[l] = tab[l+1]; 
+				tab[l+1] = tmp; 
+				exchange=1; 
+			}
+		}
+	} 
+}
+
+uint16_t ADC_GetNDelXAvg(uint16_t GetN , uint16_t DelX)
+{
+	uint16_t n = 0;
+	uint16_t total = GetN + DelX;
+	uint16_t adc_sample[ADC_SAMPLE_COUNT + ADC_SAMPLE_DELETE]= {0};
+
+	for ( n = 0 ; n < total ; n++)
+	{
+		while(ADCF);
+		adc_sample[n]= adc_data;					
+		set_ADCCON0_ADCS; //after convert , trigger again
+	}
+
+	/* Sort the samples */
+	Sort_tab(adc_sample,total);
+	
+	/* Add the samples */
+	for (n = ADC_SAMPLE_DELETE/2; n < total - ADC_SAMPLE_DELETE/2; n++)
+	{
+		adc_sum_target += adc_sample[n];
+	}
+
+	/* get avg */
+	adc_target = adc_sum_target >> ADC_SAMPLE_POWER ;
+	
+	adc_sum_target = 0;
+
+	return adc_target;
+}
+#else
+
+uint16_t ADC_Average (uint16_t avg)
 {
 	uint8_t n = 0;
 
@@ -348,6 +368,7 @@ uint16_t ADC_Average (uint8_t avg)
 
 	return adc_target;
 }
+#endif
 
 void ADC_Parameter_Initial(void)
 {	
@@ -418,7 +439,14 @@ uint16_t ADC_ConvertChannel(void)
 	adc_convert_target = (ADC_MIN_TARGET*ADC_RESOLUTION/adc_ref_voltage);
 
 	adc_value = ADC_Drop(ADC_SAMPLE_DROP);
+
+	P12 = 1;	//for test , use GPIO to monitor timing
+	#if defined (ENABLE_ADC_GET_N_DEL_X)
+	adc_value = ADC_GetNDelXAvg(ADC_SAMPLE_COUNT , ADC_SAMPLE_DELETE);
+	#else
 	adc_value = ADC_Average(ADC_SAMPLE_COUNT);
+	#endif
+	P12 = 0;	//for test , use GPIO to monitor timing
 	
 	send_UARTString("adc_value (DropAndAverage) :");	
 	send_UARTASCII(adc_value);
